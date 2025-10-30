@@ -1,9 +1,14 @@
+import {
+  ProductUpdatedNotifier,
+  ProductUpdatedDto,
+} from './product-updated-notifier';
 import { Product, createProduct, CreateProductParams } from '../domain/product';
 import { ProductRepo } from '../domain/product-repo';
 
 export type UpsertProductDeps = {
   productRepo: ProductRepo;
   now: () => Date;
+  productUpdatedNotifier: ProductUpdatedNotifier;
 };
 
 export type UpsertProductCommand = {
@@ -40,6 +45,16 @@ export async function upsertProduct(
 
     // Save (upsert) the product
     const savedProduct = await productRepo.save(product);
+
+    // Notify about the product update
+    const dto: ProductUpdatedDto = {
+      id: savedProduct.id,
+      name: savedProduct.name,
+      pricePence: savedProduct.pricePence,
+      description: savedProduct.description,
+      updatedAt: savedProduct.updatedAt.toISOString(),
+    };
+    await deps.productUpdatedNotifier.notifyProductUpdated(dto);
 
     return { success: true, data: savedProduct };
   } catch (error) {
