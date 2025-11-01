@@ -141,7 +141,7 @@ https://<your-function-app>.azurewebsites.net/api/products
 
 This service emits a "product updated" integration event after a successful upsert.
 
-- Default behavior: uses a dummy adapter that logs the event to the console.
+- Default behaviour: uses a dummy adapter that logs the event to the console.
 - HTTP adapter: enabled when the environment variable `PRODUCT_UPDATED_BASE_URL` is set.
 
 When enabled, the service will POST to:
@@ -162,14 +162,15 @@ with a JSON body shaped as:
 
 ### Configure locally
 
-Update `local.settings.json` (created from the template) to include the base URL of your receiver:
+Update `local.settings.json` (created from the template) to include the base URL of your receiver. If your receiver is an Azure Function protected by a host key, also include the key. The adapter uses the `x-functions-key` header automatically.
 
 ```
 {
   "IsEncrypted": false,
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "node",
-    "PRODUCT_UPDATED_BASE_URL": "https://your-receiver.azurewebsites.net"
+    "PRODUCT_UPDATED_BASE_URL": "https://your-receiver.azurewebsites.net",
+    "PRODUCT_UPDATED_KEY": "<your-host-key>"
   }
 }
 ```
@@ -178,7 +179,7 @@ Remove `PRODUCT_UPDATED_BASE_URL` (or leave it empty) to fall back to the dummy 
 
 ### Configure in Azure
 
-Set the application setting `PRODUCT_UPDATED_BASE_URL` on your Function App to the receiver's base URL. The app will automatically switch to the HTTP adapter at startup.
+Set the application setting `PRODUCT_UPDATED_BASE_URL` on your Function App to the receiver's base URL. If your receiver requires a host key, also set `PRODUCT_UPDATED_KEY`. The app will automatically switch to the HTTP adapter at startup.
 
 You can set this via Azure CLI:
 
@@ -186,7 +187,9 @@ You can set this via Azure CLI:
 az functionapp config appsettings set \
   --name <your-function-app> \
   --resource-group <your-resource-group> \
-  --settings PRODUCT_UPDATED_BASE_URL=https://your-receiver.azurewebsites.net
+  --settings \
+    PRODUCT_UPDATED_BASE_URL=https://your-receiver.azurewebsites.net \
+    PRODUCT_UPDATED_KEY=<your-host-key>
 ```
 
 If needed, restart the Function App to pick up changes immediately:
