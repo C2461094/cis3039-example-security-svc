@@ -6,9 +6,19 @@ This project provides Azure Functions for managing products.
 
 ### Available Endpoints
 
-- `GET /api/products` - List all products
+- `GET /api/products` - List all products (supports OAuth2 token with optional `read:products` scope)
 - `POST /api/products` - Upsert (create or update) a product
 - `PUT /api/products` - Upsert (create or update) a product
+
+### OAuth2 Token Validation and Price Redaction
+
+The `GET /api/products` endpoint supports optional OAuth2 access token validation using the `jose` library.
+
+- **Without a valid token**: Products are returned with `pricePence` set to `null` (prices are redacted).
+- **With a valid token but missing `read:products` scope**: Products are returned with `pricePence` set to `null`.
+- **With a valid token and `read:products` scope**: Products are returned with actual prices.
+
+OAuth2 token validation must be enabled via configuration (see below).
 
 ## Local Setup
 
@@ -137,6 +147,15 @@ You can now access your endpoints at:
 https://<your-function-app>.azurewebsites.net/api/products
 ```
 
+If needed, allow cross-domain calls from your app domain and/or localhost, for example:
+
+```bash
+az functionapp cors add \
+  --name <your-function-app> \
+  --resource-group <your-resource-group> \
+  --allowed-origins http://localhost:5173
+```
+
 ### Read the host auth key
 
 ```bash
@@ -212,11 +231,103 @@ az functionapp restart \
   --resource-group <your-resource-group>
 ```
 
-If needed, allow cross-domain calls from your app domain and/or localhost, for example:
+## Auth0 Setup
+
+### 1. Create an Auth0 Tenancy (if you don't have one already)
+
+Visit [auth0.com](https://auth0.com/) and sign-up. Create and name your first tenancy following our usual naming conventions, for example `shopping-dev-ab47`.
+
+### 2. Sign-in to Auth0 CLI
+
+In the VSCode terminal:
 
 ```bash
-az functionapp cors add \
+auth0 login
+```
+
+Confirm your Auth0 domain (e.g. shopping-dev-ab47.uk.auth0.com):
+
+```bash
+auth0 tenants list
+```
+
+Keep a note of your domain as you will need it later.
+
+### 3. Register an API (resource server)
+
+Call you api registration something like `products-dev-api`. Use something like `https://products.shopping.thamco.com` for the identifier (it looks like a domain name but doesn't need to actually exist).
+
+```bash
+auth0 apis create \
+ --name <your-api-name> \
+ --identifier <your-api-identifier> \
+ --scopes "read:products" \
+ --no-input \
+ --json
+```
+
+> The `identifier` will become the audience (`aud`) for the access tokens your app acquires to access your backend service.
+
+The `scopes` above are examples and can be changed to match your needs.
+
+Since you are the frontend app and backend api author, you can skip requesting user consent to use the API: In the Auth0 web dashboard: APIs → your API → Settings → Access Settings → “Allow Skipping User Consent”.
+
+## OAuth2 Access Tokens
+
+> You must have an auth server (see Auth0 setup above).
+
+To enable OAuth2 validation, set the following environment variables:
+
+- `OAUTH2_JWKS_URI`: The JWKS endpoint URL for your OAuth2 provider (e.g., `https://your-tenant.auth0.com/.well-known/jwks.json`)
+- `OAUTH2_ISSUER`: The expected token issuer (e.g., `https://your-tenant.auth0.com/`)
+- `OAUTH2_AUDIENCE`: The expected audience/API identifier (e.g., `https://products.shopping.thamco.com`)
+
+If these variables are not set, the endpoint still works but treats all requests as unauthenticated (prices will be redacted).
+
+### Local Configuration
+
+Update `local.settings.json`:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "OAUTH2_JWKS_URI": "https://your-tenant.auth0.com/.well-known/jwks.json",
+    "OAUTH2_ISSUER": "https://your-tenant.auth0.com/",
+    "OAUTH2_AUDIENCE": "https://products.shopping.thamco.com"
+  }
+}
+```
+
+### Azure Configuration
+
+Set the OAuth2 configuration via Azure CLI:
+
+```bash
+az functionapp config appsettings set \
   --name <your-function-app> \
   --resource-group <your-resource-group> \
-  --allowed-origins http://localhost:5173
+  --settings \
+    OAUTH2_JWKS_URI=https://your-tenant.auth0.com/.well-known/jwks.json \
+    OAUTH2_ISSUER=https://your-tenant.auth0.com/ \
+    OAUTH2_AUDIENCE=https://products.shopping.thamco.com
 ```
+
+### Testing with a Token
+
+To test with an OAuth2 access token, include it in the `Authorization` header:
+
+```bash
+curl -i http://localhost:7071/api/products \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+The token must:
+
+- Be signed by the configured issuer
+- Have the configured audience
+- Be valid (not expired)
+- Include the `read:products` scope (either in the `scope` or `scp` claim) to see actual prices
+
+Tokens can be obtained using Postman, but it will probably be easier to test via the products app.

@@ -6,6 +6,9 @@ import { FakeProductRepo } from '../infra/fake-product-repo';
 import { DummyProductUpdatedNotifier } from '../infra/dummy-product-updated-notifier';
 import { HttpProductUpdatedNotifier } from '../infra/http-product-updated-notifier';
 import { ProductUpdatedNotifier } from '../app/product-updated-notifier';
+import { OAuth2Validator } from '../infra/oauth2-validator';
+import type { AuthContext } from '../app/auth-context';
+import type { HttpRequest } from '@azure/functions';
 
 let cachedProductUpdatedNotifier: ProductUpdatedNotifier | null = null;
 
@@ -52,9 +55,39 @@ export const getProductRepo = (): ProductRepo => {
   return cachedProductRepo;
 };
 
-export const makeListProductsDeps = (): ListProductsDeps => ({
-  productRepo: getProductRepo(),
-});
+let cachedOAuth2Validator: OAuth2Validator | null = null;
+
+export const getOAuth2Validator = (): OAuth2Validator | null => {
+  if (!cachedOAuth2Validator) {
+    const jwksUri = process.env.OAUTH2_JWKS_URI;
+    const issuer = process.env.OAUTH2_ISSUER;
+    const audience = process.env.OAUTH2_AUDIENCE;
+
+    if (jwksUri && issuer && audience) {
+      cachedOAuth2Validator = new OAuth2Validator({
+        jwksUri,
+        issuer,
+        audience,
+      });
+    }
+  }
+  return cachedOAuth2Validator;
+};
+
+export const makeListProductsDeps = async (
+  request: HttpRequest
+): Promise<ListProductsDeps> => {
+  // Validate OAuth2 token if validator is configured
+  const validator = getOAuth2Validator();
+  const authContext: AuthContext = validator
+    ? await validator.validate(request)
+    : { authenticated: false, scopes: [] };
+
+  return {
+    productRepo: getProductRepo(),
+    authContext,
+  };
+};
 
 export const makeUpsertProductDeps = (): UpsertProductDeps => ({
   productRepo: getProductRepo(),

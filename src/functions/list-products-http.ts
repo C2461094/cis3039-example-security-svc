@@ -3,9 +3,9 @@ import { listProducts } from '../app/list-products';
 import { makeListProductsDeps } from '../config/appServices';
 
 const listProductsHandler = async (
-  _request: HttpRequest
+  request: HttpRequest
 ): Promise<HttpResponseInit> => {
-  const deps = makeListProductsDeps();
+  const deps = await makeListProductsDeps(request);
   const result = await listProducts(deps);
 
   if (!result.success) {
